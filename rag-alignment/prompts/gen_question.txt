@@ -1,0 +1,83 @@
+
+目标：
+    开发 SFT 数据集生成脚本 `sft-data.py`，调用现有 RAG 链路，自动获取渲染完成的完整 prompt 上下文，输出 ShareGPT 格式的 SFT 训练 jsonl 文件，全程不改动项目原有业务代码。
+
+背景：
+    1、数据源：两份 CSV 文件，内置`query`（用户问题）、`target/ground_truth`（目标标准答案）字段
+        - 训练源：`/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/data/train/train-1113.csv`
+        - 验证源：`/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/data/val/val-1113.csv`
+    2、 rag流程程序入口在 xiaoan_brain/processor/query_processor/main_graph.py 中的query_app.invoke()方法
+    3、 渲染完成的最终 Prompt：存储在返回 state 的`all_docs`字段（组装逻辑在`node_answer_output.py`）
+    4、 评估过程中用到的llm和embedding 客户端已经在 knowledge\utils\llm_client_util.py 和knowledge\utils\bge_m3_embedding_util.py 中封装
+具体步骤：
+    1、禁止修改任何原有业务代码，仅做数据读取、链路调用、文件输出。生成的sft-data.py放在eval/rag-alignment/scripts中
+    2、需要生成的两份jsonl文件，一份依据train-1113.csv里的query生成train-1113.jsonl,一份依据val-1113.csv里的query生成val-1113.jsonl
+    jsonl格式如下：
+        {"messages": [{"role": "user", "content": "这里是RAG渲染好的完整prompt_input（全部上下文+规则+参考文档+query）"}, {"role": "assistant", "content": "两个文件里target/ground_truth标准答案"}]}
+
+    3、最终渲染完成的最终 Prompt也回填一份进train-1113.csv和val-1113.csv文件里的input列头里
+    4、所有文件路径、输出文件名等可变项全部抽成配置参数，不硬编码写死
+
+
+
+目标：
+开发 SFT 数据集生成脚本 sft-data.py，调用现有 RAG 链路，自动获取渲染完成的完整 prompt 上下文，输出 ShareGPT 格式的 SFT 训练 jsonl 文件，全程不改动项目原有业务代码。
+
+背景：
+1、数据源：两份 CSV 文件，内置query（用户问题）、ground_truth（目标标准答案）字段
+    - 训练源：/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/data/train/train-1113.csv
+    - 验证源：/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/data/val/val-1113.csv
+2、RAG流程入口：xiaoan_brain/processor/query_processor/main_graph.py 中的 query_app.invoke()
+3、渲染完成的最终 Prompt：all_docs 是最终文档切片，获传给回答模型的原始 Prompt（组装逻辑在 node_answer_output.py）
+4、LLM、Embedding 客户端已封装在 knowledge/utils/llm_client_util.py、knowledge/utils/bge_m3_embedding_util.py，脚本直接复用
+
+约束&步骤：
+1、禁止修改任何原有业务代码，仅做数据读取、RAG链路调用、结果输出；脚本存放路径 eval/rag-alignment/scripts/sft-data.py
+2、输出两份 ShareGPT 格式 jsonl：
+    train-1113.csv → train-1113.jsonl
+    val-1113.csv → val-1113.jsonl
+    单行样例：
+    {"messages": [{"role": "user", "content": "RAG渲染后的完整prompt（上下文+规则+参考文档+query）"}, {"role": "assistant", "content": "ground_truth标准答案"}]}
+3、将渲染得到的prompt回填至CSV的 input 列；默认输出新CSV，不直接覆盖原始源文件，支持参数开启覆盖
+4、所有路径、输出文件名、key等可变项全部抽成命令行参数，不硬编码
+
+
+
+目标：
+项目通过PyTRIO（PyTRIO 是面向大语言模型后训练的全托管训练引擎）进行lora微调，api接口都是通过PyTRIO进行，需要编写一个sft lora的训练脚本sft.py
+
+背景：
+    1、PyTRIO官方使用有skill，已经加载pytrio-skill
+    2、所有训练等相关参数和数据文件路径，不硬编码，用这个文件里/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/.env
+    3、这个是数据文件jsonl里的数据示例：
+{"messages": [{"role": "user", "content": "系统从哪类服务器同步时间？"}, {"role": "assistant", "content": "没有可信和可选的主体，请明确以后再次提问!!"}]}
+
+约束&步骤：
+    1、训练还是参考官方这个文件里代码来，这个代码文件在eval/rag-alignment/PyTRIO/sft-tem.py
+    2、要求所有的核心步骤函数都用 step_1_xx step_2_xx ... 的格式命名
+    3、每个关键步骤函数写清楚输入输出和功能描述等注释，输入输出的数据标注清楚具体类型格式，例如：dict[str,list[]]
+    4、注意下训练数据主要是两个部分：
+        #train-1113.jsonl--训练集，用于 LoRA 权重更新；
+        #val-1113.jsonl--Dev 开发集，训练时送入框架，仅用于监控 loss、早停、调超参；
+        #Holdout-1113.csv--最终验证集不参与训练
+
+
+
+
+目标：
+项目通过PyTRIO（PyTRIO 是面向大语言模型后训练的全托管训练引擎）进行lora微调，api接口都是通过PyTRIO进行，需要编写一个sft lora的训练脚本sft.py
+
+背景：
+    1、PyTRIO官方使用有skill，已经加载pytrio-skill
+    2、所有训练等相关参数和数据文件路径，不硬编码，用这个文件里/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/.env
+    3、这个是数据文件jsonl里的数据示例：
+{"messages": [{"role": "user", "content": "系统从哪类服务器同步时间？"}, {"role": "assistant", "content": "没有可信和可选的主体，请明确以后再次提问!!"}]}
+
+约束&步骤：
+    1、训练还是参考官方这个文件里代码来，这个代码文件在eval/rag-alignment/PyTRIO/sft-tem.py
+    2、要求所有的核心步骤函数都用 step_1_xx step_2_xx ... 的格式命名
+    3、每个关键步骤函数写清楚输入输出和功能描述等注释，输入输出的数据标注清楚具体类型格式，例如：dict[str,list[]]
+    4、注意下训练数据主要是两个部分：
+        #train-1113.jsonl--训练集，用于 LoRA 权重更新；
+        #val-1113.jsonl--Dev 开发集，训练时送入框架，仅用于监控 loss、早停、调超参；
+        #Holdout-1113.csv--最终验证集不参与训练

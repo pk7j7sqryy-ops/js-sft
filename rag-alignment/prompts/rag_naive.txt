@@ -1,0 +1,12 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "【参考内容】\n{context原文}\n【历史对话】\n{history原文}\n【相关商品/实体】\n{item_names原文}\n【用户问题】\n{question原文}"
+    },
+    {
+      "role": "assistant",
+      "content": "标注好的忠实准确答案"
+    }
+  ]
+}
