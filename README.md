@@ -186,3 +186,46 @@ SEED=42
 # 早停耐心值
 EARLY_STOPPING_PATIENCE=3
 ```
+
+---
+
+## 五、仓库文件结构
+
+> 本节仅列出已推送到 GitHub 仓库的文件，与仓库实际内容一一对应。
+
+```
+.
+├── README.md                              # 本文档：SFT 消融实验与评测说明
+├── SFT消融实验指标对比报告.html           # 指标对比报告（HTML 版，含跨实验折线图与相邻实验后值差标注）
+├── images/
+│   ├── sft-training-chart-compare.png     # 多组实验训练曲线对比图
+│   └── sft-training-calm-monkey-9.png     # 最终方案训练指标面板截图
+├── script/
+│   ├── eval.py                            # 使用 Ragas 评估 RAG 查询流程（分批查询、逐题评分、支持续跑）
+│   └── test_eval.py                       # eval.py 的单元测试
+├── test/
+│   ├── apply_chat.py                      # 仅下载 tokenizer 配置（不下载 4B 权重），用于对话测试
+│   ├── pytrio-test.py                     # PyTRIO OpenAI 兼容接口调用测试
+│   └── swanlab-test.py                    # SwanLab 训练监控上报测试
+├── rag-alignment/
+│   ├── gen_reject_samples.py              # 生成「参考内容不足」拒绝样本，追加进 train/val
+│   ├── PyTRIO/
+│   │   ├── sft.py                         # 使用 PyTRIO 对 JSONL 对话数据执行 LoRA SFT
+│   │   ├── sft-tem.py                     # SFT 训练脚本（模板/示例版）
+│   │   ├── test_sft_config.py             # sft 配置项单元测试
+│   │   └── test_sft_grad_norm.py          # 梯度裁剪（grad norm）单元测试
+│   ├── prompts/
+│   │   ├── SFT 相关脚本生成提示词.txt       # 用于生成 SFT 相关脚本的提示词
+│   │   ├── 数据示例.txt                     # 数据示例说明
+│   │   └── 黄金集数据构建脚本提示词.txt      # 黄金集数据构建脚本提示词
+│   └── scripts/
+│       ├── sft-data.py                    # 从实际 RAG 回答采集 Prompt，生成 ShareGPT JSONL 并回填 CSV
+│       ├── visualize_qa_metrics.py        # 只读 CSV 评测分析，生成自包含 HTML 与 SVG 图表
+│       ├── test_answer_all_docs.py        # 回答全文档测试
+│       ├── test_build_gold.py             # 黄金集构建测试
+│       └── test_sft_data.py               # SFT 数据生成测试
+└── sft前优化结果/
+    ├── 01_mean_trends.svg                 # 各指标均值趋势图
+    ├── 02_mean_comparison.svg             # 各指标均值对比图
+    └── 03_paired_changes.svg              # 相邻实验配对变化图
+```
