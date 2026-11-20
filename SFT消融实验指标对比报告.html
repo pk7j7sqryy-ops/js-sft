@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SFT 消融实验 · 五项指标前后对比</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071018;
+      --panel: rgba(14, 25, 36, 0.94);
+      --panel-soft: #101e2b;
+      --text: #edf6f8;
+      --muted: #93a8b8;
+      --faint: #657c8e;
+      --line: rgba(148, 177, 195, 0.15);
+      --before: #8b9bb5;
+      --after: #2dd4bf;
+      --up: #43d6a0;
+      --down: #fb7f96;
+      --cyan: #52c7e5;
+      --amber: #f3c969;
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 12% -4%, rgba(31, 133, 153, 0.18), transparent 34%),
+        radial-gradient(circle at 94% 16%, rgba(45, 212, 191, 0.08), transparent 28%),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.6;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #355063; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4c6e82; }
+    * { scrollbar-width: thin; scrollbar-color: #355063 transparent; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { font: inherit; }
+    .wrap { width: min(1320px, calc(100% - 48px)); margin: 0 auto; }
+    .hero { padding: 58px 0 30px; position: relative; overflow: hidden; }
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 320px; height: 1px;
+      right: 4%; top: 82px;
+      background: linear-gradient(90deg, transparent, var(--after), transparent);
+      opacity: 0.55;
+    }
+    .eyebrow {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--after); font-size: 12px; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 28px; height: 2px; background: var(--after); }
+    h1 { margin: 16px 0 12px; font-size: clamp(30px, 4vw, 52px); line-height: 1.16; letter-spacing: -0.035em; }
+    .hero p { max-width: 850px; margin: 0; color: var(--muted); font-size: 15px; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+    .meta-chip {
+      padding: 6px 11px; border: 1px solid var(--line); border-radius: 999px;
+      color: #b8cbd6; background: rgba(14, 27, 38, 0.66); font-size: 12px;
+    }
+    .hero-callout {
+      margin-top: 28px; display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center;
+      max-width: 920px; padding: 16px 18px; border: 1px solid rgba(45, 212, 191, 0.18); border-radius: 14px;
+      background: linear-gradient(100deg, rgba(45, 212, 191, 0.08), rgba(14, 25, 36, 0.42));
+    }
+    .hero-callout strong { color: var(--after); font-size: 13px; white-space: nowrap; }
+    .hero-callout span { color: #c5d5de; font-size: 14px; }
+    main { padding-bottom: 48px; }
+    .panel {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 18px; box-shadow: var(--shadow);
+    }
+    .scope-panel { padding: 24px; margin-bottom: 18px; }
+    .tabs { display: inline-flex; flex-wrap: wrap; gap: 5px; padding: 5px; border-radius: 12px; background: #08131d; border: 1px solid var(--line); }
+    .tab {
+      border: 0; border-radius: 8px; padding: 9px 16px; color: var(--muted);
+      background: transparent; cursor: pointer; transition: 160ms ease; font-size: 13px;
+    }
+    .tab:hover { color: var(--text); background: rgba(255,255,255,0.035); }
+    .tab[aria-selected="true"] { color: #06201e; background: var(--after); font-weight: 700; box-shadow: 0 5px 20px rgba(45, 212, 191, 0.18); }
+    .tab:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .scope-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-top: 22px; }
+    .scope-heading h2 { margin: 0 0 4px; font-size: 23px; letter-spacing: -0.02em; }
+    .scope-heading p { margin: 0; color: var(--muted); font-size: 13px; }
+    .scope-pill { color: var(--after); font-size: 12px; border: 1px solid rgba(45,212,191,0.25); padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 18px 0; }
+    .kpi { padding: 18px 20px; min-height: 128px; position: relative; overflow: hidden; }
+    .kpi::after { content: ""; position: absolute; width: 70px; height: 70px; right: -28px; top: -28px; border-radius: 50%; background: var(--kpi-color, var(--after)); opacity: 0.07; }
+    .kpi-label { color: var(--muted); font-size: 12px; }
+    .kpi-value { margin-top: 8px; font-size: 26px; line-height: 1.2; font-weight: 750; letter-spacing: -0.03em; }
+    .kpi-value.up { color: var(--up); }
+    .kpi-value.down { color: var(--down); }
+    .kpi-note { margin-top: 7px; color: var(--faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .section-head h3 { margin: 0; font-size: 16px; }
+    .section-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .section-index { color: var(--faint); font: 11px "SFMono-Regular", Consolas, monospace; letter-spacing: 0.1em; }
+    .legend { display: flex; gap: 14px; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; flex-wrap: wrap; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .table-panel { padding: 22px; margin-bottom: 26px; }
+    .table-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { padding: 11px 14px; text-align: right; color: var(--muted); background: #0a1620; font-size: 10px; letter-spacing: 0.035em; font-weight: 650; white-space: nowrap; }
+    td { padding: 12px 14px; text-align: right; border-top: 1px solid var(--line); color: #cfdee5; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    td.metric-cell { font-weight: 650; color: var(--text); }
+    td.metric-cell small { display: block; color: var(--faint); font-weight: 400; font-size: 10px; }
+    td.up { color: var(--up); }
+    td.down { color: var(--down); }
+    td.na { color: var(--faint); font-style: italic; }
+    .n-value { color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; }
+    .section-title { margin: 34px 0 14px; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+    .section-title h2 { margin: 0; font-size: 21px; letter-spacing: -0.02em; }
+    .section-title p { margin: 0; color: var(--muted); font-size: 12px; }
+    .ablation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .ablation-card { padding: 22px; }
+    .ablation-card h3 { margin: 0 0 4px; font-size: 15px; }
+    .ablation-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .ablation-head p { margin: 0; color: var(--muted); font-size: 11px; }
+    .exp-badge { padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+    .exp-badge.warn { border-color: rgba(243,201,105,0.35); color: var(--amber); }
+    .ablation-row { display: grid; grid-template-columns: minmax(120px, 1fr) 64px 64px 82px; gap: 8px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); font-size: 11px; }
+    .ablation-row.header { color: var(--faint); font-size: 9px; padding: 7px 0; }
+    .ablation-row .num { text-align: right; font-family: "SFMono-Regular", Consolas, monospace; }
+    .ablation-row .change { text-align: right; font-weight: 700; }
+    .change.up { color: var(--up); }
+    .change.down { color: var(--down); }
+    .change.flat { color: var(--muted); }
+    .svg-wrap { width: 100%; overflow-x: auto; }
+    .svg-wrap svg { display: block; width: 100%; min-width: 720px; height: auto; }
+    .line-panel { padding: 22px; margin-bottom: 26px; }
+    .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .method-card { padding: 22px; }
+    .method-card h3 { margin: 0 0 14px; font-size: 15px; }
+    .rules { margin: 0; padding-left: 20px; color: #b7c9d3; font-size: 12px; }
+    .rules li { margin: 8px 0; padding-left: 3px; }
+    .formula { margin: 10px 0; padding: 12px 14px; border-left: 2px solid var(--after); background: rgba(45,212,191,0.045); color: #c9d9e0; font: 11px/1.7 "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+    .caveats { margin-top: 18px; padding: 20px 22px; border-color: rgba(243,201,105,0.2); }
+    .caveats h3 { margin: 0 0 10px; color: var(--amber); font-size: 14px; }
+    .caveats ul { margin: 0; padding-left: 19px; color: var(--muted); font-size: 11px; }
+    .caveats li { margin: 7px 0; }
+    footer { padding: 25px 0 40px; color: var(--faint); font-size: 10px; display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); }
+    @media (max-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .ablation-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .wrap { width: min(100% - 24px, 1320px); }
+      .hero { padding-top: 34px; }
+      .hero-callout { grid-template-columns: 1fr; gap: 5px; }
+      .scope-panel, .table-panel, .line-panel, .method-card, .ablation-card { padding: 16px; }
+      .scope-heading, .section-title { align-items: flex-start; flex-direction: column; gap: 7px; }
+      .ablation-row { grid-template-columns: minmax(105px, 1fr) 58px 58px 70px; font-size: 10px; }
+      footer { flex-direction: column; gap: 5px; }
+    }
+    @media print {
+      body { background: #071018; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .wrap { width: 100%; }
+      .panel { box-shadow: none; break-inside: avoid; }
+      .tabs { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">Evaluation / Ablation Study</div>
+      <h1>SFT 消融实验 · 指标前后对比</h1>
+      <p>对 6 组 LoRA 消融实验的五项 Ragas 指标（Faithfulness / Answer Relevancy / Context Precision / Context Recall / Answer Correctness）进行 SFT 前后均值、绝对差值、变化幅度与相对百分比的对比，并给出跨实验折线趋势。</p>
+      <div class="hero-meta">
+        <span class="meta-chip">6 组消融实验</span>
+        <span class="meta-chip">5 项评测指标</span>
+        <span class="meta-chip">按训练维度分簇</span>
+        <span class="meta-chip">剔除 0 值与空值</span>
+        <span class="meta-chip">报告日期 2026-11-20</span>
+      </div>
+      <div class="hero-callout">
+        <strong>总体结论</strong>
+        <span>「eval 不做追问评估 + 训练追问权重置 0」（实验 06）在 Faithfulness 上实现 +10.41% 显著回升，同时 Answer Correctness +14.96%，是最优方向；「eval 不做追问评估」单独（实验 05）Faithfulness +17.64% 但以 Context Recall −8.39% 为代价。详见下方逐项分析。</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel scope-panel" aria-labelledby="scope-title">
+      <div class="tabs" role="tablist" aria-label="指标维度">
+        <button class="tab" role="tab" aria-selected="true" data-metric="faithfulness">Faithfulness</button>
+        <button class="tab" role="tab" aria-selected="false" data-metric="Answer Relevancy">Answer Relevancy</button>
+        <button class="tab" role="tab" aria-selected="false" data-metric="Context Precision">Context Precision</button>
+        <button class="tab" role="tab" aria-selected="false" data-metric="Context Recall">Context Recall</button>
+        <button class="tab" role="tab" aria-selected="false" data-metric="Answer Correctness">Answer Correctness</button>
+      </div>
+      <div class="scope-heading">
+        <div>
+          <h2 id="scope-title">Faithfulness · 答案忠实度</h2>
+          <p id="scope-description">当前聚焦指标；点击上方切换维度，下方折线与 KPI 同步更新。</p>
+        </div>
+        <span class="scope-pill" id="scope-pill">6 实验 · 前后对比</span>
+      </div>
+    </section>
+
+    <section class="kpi-grid" id="kpis" aria-label="关键结论"></section>
+
+    <section class="panel line-panel">
+      <div class="section-head">
+        <div>
+          <h3 id="line-title">跨实验指标变化折线</h3>
+          <p id="line-desc">X 轴按训练维度分簇（attn+mlp+lm → 仅attn），前后两线；柱状展示相对变化百分比，红色下降、绿色上升。</p>
+        </div>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--before)"></i>SFT 前</span>
+          <span><i class="dot" style="background:var(--after)"></i>SFT 后</span>
+          <span><i class="dot" style="background:var(--up)"></i>上升</span>
+          <span><i class="dot" style="background:var(--down)"></i>下降</span>
+        </div>
+      </div>
+      <div class="svg-wrap" id="line-chart"></div>
+    </section>
+
+    <div class="section-title">
+      <h2>各消融实验前后对比</h2>
+      <p>每张卡片一个实验 · 清洗后均值 · 相对变化以 SFT 前均值为分母</p>
+    </div>
+    <section class="ablation-grid" id="ablation-cards"></section>
+
+    <div class="section-title">
+      <h2>指标数值明细总表</h2>
+      <p>全部实验 × 五项指标 · 前后均值 / n / 差值 / 相对变化 / 趋势</p>
+    </div>
+    <section class="panel table-panel">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>实验</th>
+              <th>指标</th>
+              <th>前 n</th>
+              <th>前均值</th>
+              <th>后 n</th>
+              <th>后均值</th>
+              <th>绝对差值</th>
+              <th>相对变化</th>
+              <th>趋势</th>
+            </tr>
+          </thead>
+          <tbody id="detail-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="section-title">
+      <h2>清洗规则与计算口径</h2>
+      <p>所有图表和表格共用同一套统计规则</p>
+    </div>
+    <section class="method-grid">
+      <article class="panel method-card">
+        <h3>数据清洗</h3>
+        <ol class="rules">
+          <li><strong>逐指标独立清洗</strong>：不删除整行；某指标无效不影响同行其他指标。</li>
+          <li><strong>剔除 0 值与空值</strong>：数值为 0 / 0.0、空字符串、空值、NaN 均不纳入统计（按本次要求）。</li>
+          <li><strong>仅保留有效正值</strong>：可解析为数值、有限且严格大于 0 才计入均值。</li>
+          <li><strong>不按 status 过滤</strong>：query_failed / evaluation_partial 记录只要指标为有效正值仍保留。</li>
+          <li><strong>编码处理</strong>：所有 CSV 用 utf-8-sig 解析，兼容 BOM。</li>
+        </ol>
+      </article>
+      <article class="panel method-card">
+        <h3>统计公式</h3>
+        <div class="formula">均值 = 清洗后有效观测值之和 ÷ 有效观测数 n</div>
+        <div class="formula">绝对差值 = SFT 后均值 − SFT 前均值</div>
+        <div class="formula">相对变化 (%) = 绝对差值 ÷ SFT 前均值 × 100%</div>
+        <ul class="rules">
+          <li>每个实验的「前/后」均值按各自文件的有效观测直接合并求平均（等价于按 n 加权）。</li>
+          <li>百分比以未四舍五入的原始均值计算；页面仅控制展示精度。</li>
+          <li>属于逐指标、非配对均值比较；前后 n 可能不同，不解释为严格同题配对提升。</li>
+          <li>「SFT 前」文件在各实验间 byte 级一致（共享基线），仅 01 使用旧评测集、05 仅 hold、03 缺 hold 后评估。</li>
+        </ul>
+      </article>
+    </section>
+
+    <aside class="panel caveats">
+      <h3>解读边界与数据质量提示</h3>
+      <ul>
+        <li><strong>实验 01</strong> 使用旧评测集（hold 20 + human 10），样本量与其余实验（hold 40 + human 20）不同，<strong>不可与 02–06 直接横向对比</strong>，仅作历史参考。</li>
+        <li><strong>实验 03</strong> 缺失 hold 后评估文件，仅 human 20 题前后对齐；其 before/after 已按 human-only 口径重新对齐（n 一致），但样本范围窄，结论需谨慎。</li>
+        <li><strong>实验 05</strong> 仅 hold 40 题（无 human），before/after 均为 hold-only，口径内部一致，但无法与其他实验的「hold+human」均值直接等同比较。</li>
+        <li>实验 02/04/06 为完整标准评测集（hold 40 + human 20），三者间口径一致，是横向对比的主要依据。</li>
+        <li>本报告 0 值按规则剔除、不计入均值；若 0 代表真实失败得分，此规则会改变均值，建议另报零值率/缺失率。</li>
+      </ul>
+    </aside>
+  </main>
+
+  <footer class="wrap">
+    <span>来源：eval/data/eval-checkpoint/ 下 01–06 消融实验目录 · 源 CSV 未修改</span>
+    <span>独立 HTML · 无外部图表依赖 · 可离线查看</span>
+  </footer>
+
+  <script>
+    const METRICS = ["faithfulness", "Answer Relevancy", "Context Precision", "Context Recall", "Answer Correctness"];
+    const METRIC_META = {
+      "faithfulness": { label: "Faithfulness", zh: "答案忠实度" },
+      "Answer Relevancy": { label: "Answer Relevancy", zh: "答案相关性" },
+      "Context Precision": { label: "Context Precision", zh: "上下文精确率" },
+      "Context Recall": { label: "Context Recall", zh: "上下文召回率" },
+      "Answer Correctness": { label: "Answer Correctness", zh: "答案正确性" }
+    };
+    const GROUP_ORDER = ["attn+mlp+lm", "仅attn"];
+
+    const EXPS = [{"id": "01", "name": "attn+mlp+lm（未清洗答案）", "group": "attn+mlp+lm", "scope": "hold20+human10", "missing": "", "before": {"faithfulness": {"n": 24, "mean": 0.8524}, "Answer Relevancy": {"n": 21, "mean": 0.8663}, "Context Precision": {"n": 22, "mean": 0.9112}, "Context Recall": {"n": 23, "mean": 0.7693}, "Answer Correctness": {"n": 28, "mean": 0.4813}}, "after": {"faithfulness": {"n": 24, "mean": 0.9146}, "Answer Relevancy": {"n": 22, "mean": 0.7904}, "Context Precision": {"n": 24, "mean": 0.913}, "Context Recall": {"n": 24, "mean": 0.7502}, "Answer Correctness": {"n": 30, "mean": 0.5138}}, "axisLines": ["lora（attn+mlp+lm）", "训练：未清洗数据"]}, {"id": "02", "name": "attn+mlp+lm（清洗后）", "group": "attn+mlp+lm", "scope": "hold40+human20", "missing": "", "before": {"faithfulness": {"n": 57, "mean": 0.8109}, "Answer Relevancy": {"n": 53, "mean": 0.9082}, "Context Precision": {"n": 58, "mean": 0.8568}, "Context Recall": {"n": 56, "mean": 0.8401}, "Answer Correctness": {"n": 59, "mean": 0.6225}}, "after": {"faithfulness": {"n": 57, "mean": 0.6883}, "Answer Relevancy": {"n": 55, "mean": 0.9002}, "Context Precision": {"n": 58, "mean": 0.847}, "Context Recall": {"n": 57, "mean": 0.8432}, "Answer Correctness": {"n": 60, "mean": 0.6622}}, "axisLines": ["lora（attn+mlp+lm）", "训练：清洗后数据（同推理提示词input）"]}, {"id": "03", "name": "仅attn", "group": "仅attn", "scope": "human20", "missing": "hold-after 缺失", "before": {"faithfulness": {"n": 18, "mean": 0.8934}, "Answer Relevancy": {"n": 17, "mean": 0.8492}, "Context Precision": {"n": 18, "mean": 0.8716}, "Context Recall": {"n": 16, "mean": 0.9482}, "Answer Correctness": {"n": 19, "mean": 0.6008}}, "after": {"faithfulness": {"n": 18, "mean": 0.7479}, "Answer Relevancy": {"n": 17, "mean": 0.8705}, "Context Precision": {"n": 18, "mean": 0.8645}, "Context Recall": {"n": 16, "mean": 0.947}, "Answer Correctness": {"n": 19, "mean": 0.6018}}, "axisLines": ["lora（attn）", "训练：清洗后数据（同推理提示词input）"]}, {"id": "04", "name": "仅attn+修改推理提示词", "group": "仅attn", "scope": "hold40+human20", "missing": "", "before": {"faithfulness": {"n": 57, "mean": 0.8109}, "Answer Relevancy": {"n": 53, "mean": 0.9082}, "Context Precision": {"n": 58, "mean": 0.8568}, "Context Recall": {"n": 56, "mean": 0.8401}, "Answer Correctness": {"n": 59, "mean": 0.6225}}, "after": {"faithfulness": {"n": 58, "mean": 0.6768}, "Answer Relevancy": {"n": 55, "mean": 0.9122}, "Context Precision": {"n": 59, "mean": 0.8316}, "Context Recall": {"n": 57, "mean": 0.8574}, "Answer Correctness": {"n": 60, "mean": 0.6558}}, "axisLines": ["lora（attn）", "训练：清洗后数据（同推理提示词input）", "评估：修改同义推理提示词"]}, {"id": "05", "name": "仅attn（eval不做追问评估）", "group": "仅attn", "scope": "hold40", "missing": "human 缺失", "before": {"faithfulness": {"n": 39, "mean": 0.7728}, "Answer Relevancy": {"n": 36, "mean": 0.9361}, "Context Precision": {"n": 40, "mean": 0.8502}, "Context Recall": {"n": 40, "mean": 0.7968}, "Answer Correctness": {"n": 40, "mean": 0.6329}}, "after": {"faithfulness": {"n": 39, "mean": 0.9091}, "Answer Relevancy": {"n": 38, "mean": 0.9021}, "Context Precision": {"n": 37, "mean": 0.814}, "Context Recall": {"n": 40, "mean": 0.7299}, "Answer Correctness": {"n": 40, "mean": 0.7599}}, "axisLines": ["lora（attn）", "训练：清洗后数据（同推理提示词input）", "评估：修改同义推理提示词", "+追问建议后不做评估"]}, {"id": "06", "name": "仅attn（eval不做追问+追问权重0）", "group": "仅attn", "scope": "hold40+human20", "missing": "", "before": {"faithfulness": {"n": 57, "mean": 0.8109}, "Answer Relevancy": {"n": 53, "mean": 0.9082}, "Context Precision": {"n": 58, "mean": 0.8568}, "Context Recall": {"n": 56, "mean": 0.8401}, "Answer Correctness": {"n": 59, "mean": 0.6225}}, "after": {"faithfulness": {"n": 55, "mean": 0.8953}, "Answer Relevancy": {"n": 50, "mean": 0.9202}, "Context Precision": {"n": 57, "mean": 0.8352}, "Context Recall": {"n": 55, "mean": 0.8545}, "Answer Correctness": {"n": 58, "mean": 0.7156}}, "axisLines": ["lora（attn）", "训练：清洗后数据（同推理提示词input）", "+20%拒绝回答负样本", "+target追问建议不算loss", "评估：修改同义推理提示词", "+追问建议后不做评估"]}];
+
+    const fmt = v => Number(v).toFixed(4);
+    const fmtPct = v => (v > 0 ? "+" : "") + Number(v).toFixed(2) + "%";
+    const fmtAbs = v => (v > 0 ? "+" : "") + Number(v).toFixed(4);
+    const trend = v => v > 0.0005 ? "up" : v < -0.0005 ? "down" : "flat";
+    const trendText = v => v > 0.0005 ? "上升" : v < -0.0005 ? "下降" : "持平";
+    const trendArrow = v => v > 0.0005 ? "↑" : v < -0.0005 ? "↓" : "→";
+
+    function deltasOf(exp, metric) {
+      const b = exp.before[metric], a = exp.after[metric];
+      if (!b.mean || !a.mean || b.mean <= 0) return null;
+      const abs = a.mean - b.mean;
+      const pct = abs / b.mean * 100;
+      return { abs, pct };
+    }
+
+    function renderKpis(metric) {
+      const rows = EXPS.map(e => ({ e, d: deltasOf(e, metric) })).filter(r => r.d);
+      const rising = rows.filter(r => r.d.pct > 0).length;
+      const falling = rows.length - rising;
+      const best = [...rows].sort((a,b) => b.d.pct - a.d.pct)[0];
+      const worst = [...rows].sort((a,b) => a.d.pct - b.d.pct)[0];
+      const cards = [
+        { label: "趋势分布", value: rising + " 升 / " + falling + " 降", cls: "up", note: "共 " + rows.length + " 个有效实验", color: "var(--up)" },
+        { label: "最大相对提升", value: fmtPct(best.d.pct), cls: "up", note: "实验 " + best.e.id + " · " + best.e.name, color: "var(--up)" },
+        { label: "最大相对下降", value: fmtPct(worst.d.pct), cls: "down", note: "实验 " + worst.e.id + " · " + worst.e.name, color: "var(--down)" },
+        { label: "指标", value: METRIC_META[metric].zh, cls: "", note: METRIC_META[metric].label, color: "var(--cyan)" }
+      ];
+      document.getElementById("kpis").innerHTML = cards.map(c =>
+        '<article class="panel kpi" style="--kpi-color:' + c.color + '">' +
+          '<div class="kpi-label">' + c.label + "</div>" +
+          '<div class="kpi-value ' + c.cls + '">' + c.value + "</div>" +
+          '<div class="kpi-note" title="' + c.note + '">' + c.note + "</div>" +
+        "</article>").join("");
+    }
+
+    function renderLineChart(metric) {
+      const W = 1200;
+      const H = 400;
+      const plotL = 60, plotR = 1180, plotT = 30, plotB = 268;
+      const n = EXPS.length;
+      const slotW = (plotR - plotL) / n;
+      // 找出组边界
+      const groupStarts = [];
+      let prevG = null;
+      EXPS.forEach((e, i) => { if (e.group !== prevG) { groupStarts.push({ i, g: e.group }); prevG = e.group; } });
+
+      const vals = [];
+      EXPS.forEach(e => {
+        const b = e.before[metric], a = e.after[metric];
+        if (b.mean) vals.push(b.mean);
+        if (a.mean) vals.push(a.mean);
+      });
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.12 || 0.05;
+      const yLo = Math.max(0, lo - pad), yHi = Math.min(1, hi + pad);
+      const y = v => plotB - (v - yLo) / (yHi - yLo) * (plotB - plotT);
+
+      let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="跨实验指标变化折线">';
+      // 背景网格
+      for (let g = 0; g <= 4; g++) {
+        const gy = plotT + (plotB - plotT) * g / 4;
+        const gv = yHi - (yHi - yLo) * g / 4;
+        svg += '<line x1="' + plotL + '" y1="' + gy + '" x2="' + plotR + '" y2="' + gy + '" stroke="#7890a0" stroke-opacity="0.12" stroke-dasharray="2 4"/>';
+        svg += '<text x="' + (plotL - 8) + '" y="' + (gy + 3) + '" text-anchor="end" fill="#526b7d" font-size="9">' + gv.toFixed(2) + "</text>";
+      }
+      // 组分隔
+      groupStarts.forEach((gs, idx) => {
+        if (idx > 0) {
+          const x = plotL + gs.i * slotW;
+          svg += '<line x1="' + x + '" y1="' + plotT + '" x2="' + x + '" y2="' + plotB + '" stroke="#3a5568" stroke-opacity="0.6" stroke-dasharray="5 5"/>';
+        }
+      });
+      // 组标题：放在每组区间的水平居中位置
+      groupStarts.forEach((gs, idx) => {
+        const nextIdx = idx + 1 < groupStarts.length ? groupStarts[idx + 1].i : EXPS.length;
+        const centerX = plotL + ((gs.i + nextIdx) / 2) * slotW;
+        svg += '<text x="' + centerX + '" y="' + (H - 6) + '" text-anchor="middle" fill="#5f7c8e" font-size="11" font-weight="700">' + GROUP_ORDER[idx] + "</text>";
+      });
+
+      // 前后折线点
+      const cx = i => plotL + i * slotW + slotW / 2;
+      let beforePts = [], afterPts = [];
+      EXPS.forEach((e, i) => {
+        const b = e.before[metric], a = e.after[metric];
+        const x = cx(i);
+        if (b.mean) beforePts.push([x, y(b.mean)]);
+        if (a.mean) afterPts.push([x, y(a.mean)]);
+      });
+      const polyline = (pts, color) => {
+        let d = pts.map((p,i) => (i===0?'M':'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+        return '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+      };
+      svg += polyline(beforePts, "#8b9bb5");
+      svg += polyline(afterPts, "#2dd4bf");
+
+      // 相邻实验对比标注（仅后值差：i+1 比 i 的 SFT 后差异，标在两点之间）
+      const adjPct = (cur, prev) => {
+        if (!cur || !prev || prev <= 0) return null;
+        return (cur - prev) / prev * 100;
+      };
+      for (let i = 0; i < n - 1; i++) {
+        const e0 = EXPS[i], e1 = EXPS[i + 1];
+        const midX = (cx(i) + cx(i + 1)) / 2;
+        const a0 = e0.after[metric].mean, a1 = e1.after[metric].mean;
+        const pa = adjPct(a1, a0);
+        if (pa != null) {
+          const colA = pa >= 0 ? "#43d6a0" : "#fb7f96";
+          const yA = Math.min(y(a0), y(a1)) - 10;
+          svg += '<text x="' + midX + '" y="' + yA + '" text-anchor="middle" fill="' + colA + '" font-size="8.5" font-weight="700">' + fmtPct(pa) + "</text>";
+        }
+      }
+
+      // 点 + 数值标注 + 变化柱
+      EXPS.forEach((e, i) => {
+        const x = cx(i);
+        const b = e.before[metric], a = e.after[metric];
+        const d = deltasOf(e, metric);
+        // before 点
+        if (b.mean) {
+          svg += '<circle cx="' + x + '" cy="' + y(b.mean) + '" r="4.5" fill="#8b9bb5" stroke="#101e2b" stroke-width="1.5"/>';
+        }
+        // after 点
+        if (a.mean) {
+          svg += '<circle cx="' + x + '" cy="' + y(a.mean) + '" r="4.5" fill="#2dd4bf" stroke="#101e2b" stroke-width="1.5"/>';
+          svg += '<text x="' + x + '" y="' + (y(a.mean) - 8) + '" text-anchor="middle" fill="#7fe6d7" font-size="9">' + fmt(a.mean) + "</text>";
+        }
+        // 实验描述标注：id 行 + 多行配置/训练/评估说明（超长行自动折行）
+        svg += '<text x="' + x + '" y="' + (plotB + 14) + '" text-anchor="middle" fill="#c8d7df" font-size="10" font-weight="700">' + e.id + "</text>";
+        const charW = c => (c.charCodeAt(0) > 255 ? 8.5 : 5);
+        const wrapLine = (line, maxW) => {
+          // 按累积宽度折行
+          const parts = [];
+          let cur = "", w = 0;
+          for (const c of line) {
+            const cw = charW(c);
+            if (w + cw > maxW && cur) { parts.push(cur); cur = c; w = cw; }
+            else { cur += c; w += cw; }
+          }
+          if (cur) parts.push(cur);
+          return parts;
+        };
+        const axisLines = e.axisLines || [e.name];
+        const maxW = slotW - 6;
+        let yCursor = plotB + 26;
+        axisLines.forEach((line) => {
+          const wrapped = wrapLine(line, maxW);
+          const isTrain = line.indexOf("训练") === 0;
+          const isEval = line.indexOf("评估") === 0;
+          const color = isTrain ? "#9fb8c8" : isEval ? "#7ea3b5" : "#b8cbd6";
+          wrapped.forEach(sub => {
+            svg += '<text x="' + x + '" y="' + yCursor + '" text-anchor="middle" fill="' + color + '" font-size="8.5">' + sub + "</text>";
+            yCursor += 11;
+          });
+        });
+        const pctY = yCursor + 3;
+        // 相对变化标注（在描述下方）
+        if (d) {
+          const t = d.pct >= 0 ? "up" : "down";
+          const col = t === "up" ? "#43d6a0" : "#fb7f96";
+          svg += '<text x="' + x + '" y="' + pctY + '" text-anchor="middle" fill="' + col + '" font-size="9" font-weight="700">' + fmtPct(d.pct) + "</text>";
+        } else {
+          svg += '<text x="' + x + '" y="' + pctY + '" text-anchor="middle" fill="#657c8e" font-size="9">N/A</text>';
+        }
+      });
+
+      svg += "</svg>";
+      document.getElementById("line-chart").innerHTML = svg;
+    }
+
+    function renderAblationCards(metric) {
+      document.getElementById("ablation-cards").innerHTML = EXPS.map(e => {
+        const d = deltasOf(e, metric);
+        const warn = e.missing ? " warn" : "";
+        const warnText = e.missing ? " · " + e.missing : "";
+        const rows = METRICS.map(m => {
+          const b = e.before[m], a = e.after[m];
+          const dd = deltasOf(e, m);
+          const changeCls = dd ? trend(dd.pct) : "flat";
+          const changeHtml = dd ? fmtPct(dd.pct) : "N/A";
+          const highlight = (m === metric) ? ' style="color:var(--cyan);font-weight:700"' : "";
+          return '<div class="ablation-row">' +
+            "<span" + highlight + ">" + METRIC_META[m].label + "</span>" +
+            '<span class="num">' + (b.mean ? fmt(b.mean) : "N/A") + "</span>" +
+            '<span class="num">' + (a.mean ? fmt(a.mean) : "N/A") + "</span>" +
+            '<span class="change ' + changeCls + '">' + changeHtml + "</span>" +
+          "</div>";
+        }).join("");
+        return '<article class="panel ablation-card">' +
+          '<div class="ablation-head"><div><h3>实验 ' + e.id + " · " + e.name + "</h3><p>" + e.scope + (warnText ? warnText : "") + "</p></div>" +
+          '<span class="exp-badge' + warn + '">' + (e.missing ? "⚠ 口径受限" : e.scope) + "</span></div>" +
+          '<div class="ablation-row header"><span>指标</span><span class="num">SFT 前</span><span class="num">SFT 后</span><span class="change">相对变化</span></div>' +
+          rows + "</article>";
+      }).join("");
+    }
+
+    function renderDetailTable() {
+      let html = "";
+      EXPS.forEach(e => {
+        METRICS.forEach((m, mi) => {
+          const b = e.before[m], a = e.after[m];
+          const d = deltasOf(e, m);
+          const cls = d ? trend(d.pct) : "flat";
+          const absStr = d ? fmtAbs(d.abs) : "—";
+          const pctStr = d ? fmtPct(d.pct) : "—";
+          const bStr = b.mean ? fmt(b.mean) : "—";
+          const aStr = a.mean ? fmt(a.mean) : "—";
+          html += "<tr>" +
+            '<td class="metric-cell">' + (mi === 0 ? ("实验 " + e.id + "<small>" + e.name + "</small>") : "") + "</td>" +
+            "<td>" + METRIC_META[m].label + "</td>" +
+            '<td class="n-value">' + b.n + "</td>" +
+            "<td>" + bStr + "</td>" +
+            '<td class="n-value">' + a.n + "</td>" +
+            "<td>" + aStr + "</td>" +
+            '<td class="' + cls + '">' + absStr + "</td>" +
+            '<td class="' + cls + '"><strong>' + pctStr + "</strong></td>" +
+            '<td class="' + cls + '">' + (d ? trendArrow(d.pct) + " " + trendText(d.pct) : "—") + "</td>" +
+          "</tr>";
+        });
+      });
+      document.getElementById("detail-body").innerHTML = html;
+    }
+
+
+    function renderScope(metric) {
+      document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.metric === metric)));
+      document.getElementById("scope-title").textContent = METRIC_META[metric].label + " · " + METRIC_META[metric].zh;
+      document.getElementById("line-title").textContent = METRIC_META[metric].label + " · 跨实验变化折线";
+      document.getElementById("line-desc").textContent = "X 轴按训练维度分簇（attn+mlp+lm → 仅attn），前后两线；下方标注各实验相对变化百分比（红降绿升）。";
+      renderKpis(metric);
+      renderLineChart(metric);
+      renderAblationCards(metric);
+    }
+
+    document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => renderScope(t.dataset.metric)));
+    renderDetailTable();
+    renderScope("faithfulness");
+  </script>
+</body>
+</html>
