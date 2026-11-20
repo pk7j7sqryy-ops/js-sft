@@ -80,6 +80,12 @@ class TrainingConfig:
     dataset: str | None
     # 验证集划分比例；训练与 Dev 已分开存储，此字段不会重新划分数据。
     val_size: str | None
+    #是否训练 MLP 层、是否训练注意力层、是否训练 lm_head 层
+    train_mlp: bool
+    train_attn: bool
+    train_unembed: bool
+
+    seed: int
 
 
 def step_1_load_config(env_file: Path) -> TrainingConfig:
@@ -94,6 +100,21 @@ def step_1_load_config(env_file: Path) -> TrainingConfig:
         if value is None or not value.strip():
             raise ValueError(f"缺少必需环境变量 {key}: {env_file}")
         return value.strip()
+
+    def boolean(key: str, default: bool) -> bool:
+        value = values.get(key)
+        if value is None or not value.strip():
+            return default
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+        raise ValueError(f"{key} 必须是 true/false：{env_file}")
+
+    def integer(key: str, default: int) -> int:
+        value = values.get(key)
+        return default if value is None or not value.strip() else int(value.strip())
 
     return TrainingConfig(
         model_name_or_path=required("MODEL_NAME_OR_PATH"),
@@ -118,6 +139,10 @@ def step_1_load_config(env_file: Path) -> TrainingConfig:
         val_size=values.get("VAL_SIZE"),
         grad_clip_norm=float(required("GRAD_CLIP_NORM")),
         weight_decay=float(required("WEIGHT_DECAY")),
+        train_mlp=boolean("TRAIN_MLP", False),
+        train_attn=boolean("TRAIN_ATTN", True),
+        train_unembed=boolean("TRAIN_UNEMBED", False),
+        seed=integer("SEED", 42),
     )
 
 
@@ -217,11 +242,46 @@ def step_4_build_example(
         messages[:-1], tokenize=False, add_generation_prompt=True
     )
     prompt_tokens = tokenizer.encode(prompt_text, add_special_tokens=False)
-    completion_tokens = tokenizer.encode(messages[-1]["content"], add_special_tokens=False)
+
+    # 将 assistant 回复按【追问建议】拆成「正文」与「追问」两段：
+    # 正文参与 loss（权重 1），追问保留在序列中但不参与 loss（权重 0）。
+    # 这是严格语义上的 label masking——模型仍「见过」追问长什么样，
+    # 但不会被逼着把追问内容逐字学死，从而避免编造超出参考内容的追问。
+    assistant_content = messages[-1]["content"]
+    supervised_tokens: list[int] = []
+    masked_tokens: list[int] = []
+    followup_marker = "【追问建议】"
+    image_marker = "【图片】"
+    if followup_marker in assistant_content:
+        body_text, followup_text = assistant_content.split(followup_marker, 1)
+        # 图片区块（若有）同样不参与 loss，一并归入 masked 段。
+        if image_marker in followup_text:
+            followup_text = followup_text.split(image_marker, 1)[0]
+        # 正文段去掉首尾空白用于判断是否为空；追问段保留原始内容（含标记与内容
+        # 之间的换行），只在需要作为正文回退时再拼接，避免破坏追问文本本身。
+        body_stripped = body_text.strip()
+        if not body_stripped:
+            # 健壮性：正文为空（标记出现在开头，属异常输入）时，不回退出「只有 EOS」
+            # 的空监督，而是把追问段整体当作正文，保证至少有可监督的 token。
+            supervised_tokens = tokenizer.encode(
+                followup_marker + followup_text, add_special_tokens=False
+            )
+        else:
+            supervised_tokens = tokenizer.encode(body_text, add_special_tokens=False)
+            if followup_text.strip():
+                masked_tokens = tokenizer.encode(
+                    followup_marker + followup_text, add_special_tokens=False
+                )
+    else:
+        supervised_tokens = tokenizer.encode(assistant_content, add_special_tokens=False)
+
+    # EOS 追加到整个 completion（正文 + 追问）的末尾，保持「正文 → 追问 → EOS」的
+    # 自然顺序，而不是「正文 → EOS → 追问」。EOS 的权重为 1，单独计入监督段；
+    # 追问段虽在 EOS 之前，但权重为 0，不参与 loss，仅保留在序列中供模型「见过」格式。
     eos_token_id = tokenizer.eos_token_id
-    if eos_token_id is not None:
-        completion_tokens.append(eos_token_id)
-    if not completion_tokens:
+    eos_tokens: list[int] = [eos_token_id] if eos_token_id is not None else []
+    completion_tokens = supervised_tokens + masked_tokens + eos_tokens
+    if not supervised_tokens:
         raise ValueError("assistant completion 编码后为空")
     if len(completion_tokens) >= cutoff_len:
         raise ValueError("assistant completion 超过 CUTOFF_LEN，无法保留 prompt；请增大长度")
@@ -230,7 +290,12 @@ def step_4_build_example(
         raise ValueError("prompt 编码后为空，请检查 chat template 和 CUTOFF_LEN")
 
     tokens = [int(token) for token in prompt_tokens + completion_tokens]
-    all_weights = [0.0] * len(prompt_tokens) + [1.0] * len(completion_tokens)
+    all_weights = (
+        [0.0] * len(prompt_tokens)
+        + [1.0] * len(supervised_tokens)
+        + [0.0] * len(masked_tokens)
+        + [1.0] * len(eos_tokens)
+    )
     loss_weights = np.asarray(all_weights[1:], dtype=np.float32)
     target_tokens = np.asarray(tokens[1:], dtype=np.int32)
     datum = trio.Datum(
@@ -274,6 +339,10 @@ def step_6_create_clients(
         training_client = service_client.create_lora_training_client(
             base_model=config.model_name_or_path,
             rank=config.lora_rank,
+            train_mlp=config.train_mlp,
+            train_attn=config.train_attn,
+            train_unembed=config.train_unembed,
+            seed=config.seed
         )
     tokenizer = training_client.get_tokenizer()
     return service_client, training_client, tokenizer
@@ -344,6 +413,69 @@ def step_9_tensor_data_to_numpy(value: Any) -> np.ndarray:
     return np.asarray(value, dtype=np.float64).reshape(-1)
 
 
+def _grad_norm_from_mapping(metrics: Any) -> float | None:
+    """从任意字典/对象中按候选键名提取梯度范数，返回 None 表示拿不到。"""
+    if metrics is None:
+        return None
+    mapping = metrics if isinstance(metrics, dict) else getattr(metrics, "__dict__", None)
+    if not isinstance(mapping, dict):
+        return None
+    for key in (
+        "grad_norm",
+        "gradient_norm",
+        "grad_norm_after_clip",
+        "grad_norm_before_clip",
+        "global_grad_norm",
+        "grad/norm",
+        "gradient/norm",
+    ):
+        if key not in mapping:
+            continue
+        value = mapping[key]
+        try:
+            grad_norm = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(grad_norm):
+            return grad_norm
+    return None
+
+
+def step_9_extract_grad_norm(
+    optim_result: Any, fwdbwd_result: Any | None = None
+) -> float | None:
+    """从 PyTRIO 响应中提取真实梯度范数。
+
+    梯度范数可能出现在 `optim_step` 返回的 `OptimStepResponse.metrics`，也可能出现在
+    `forward_backward` 返回的 `ForwardBackwardOutput.metrics`。这里对两处都做一次尝试，
+    优先取 optim_step（它对应梯度裁剪后的真实范数），拿不到再回退到 forward_backward。
+    """
+    # 1) optim_step 返回体本身可能带 metrics
+    metrics = (
+        optim_result.get("metrics")
+        if isinstance(optim_result, dict)
+        else getattr(optim_result, "metrics", None)
+    )
+    grad_norm = _grad_norm_from_mapping(metrics)
+    if grad_norm is not None:
+        return grad_norm
+    # 2) optim_step 返回体顶层直接就是字段（而非包一层 metrics）
+    grad_norm = _grad_norm_from_mapping(optim_result)
+    if grad_norm is not None:
+        return grad_norm
+    # 3) forward_backward 返回的 metrics
+    if fwdbwd_result is not None:
+        fwdbwd_metrics = (
+            fwdbwd_result.get("metrics")
+            if isinstance(fwdbwd_result, dict)
+            else getattr(fwdbwd_result, "metrics", None)
+        )
+        grad_norm = _grad_norm_from_mapping(fwdbwd_metrics)
+        if grad_norm is not None:
+            return grad_norm
+    return None
+
+
 def step_9_train(
     service_client: Any,
     training_client: Any,
@@ -367,7 +499,8 @@ def step_9_train(
     best_weights_path = ""
     validations_without_improvement = 0
     stop_training = False
-    rng = random.Random(42)
+    warned_missing_grad_norm = False
+    rng = random.Random(config.seed)
     for epoch in tqdm(range(config.num_train_epochs)):
         epoch_examples = train_examples.copy()
         rng.shuffle(epoch_examples)
@@ -378,17 +511,17 @@ def step_9_train(
                 [example.datum for example in batch], loss_fn="cross_entropy"
             )
             fwdbwd_result = fwdbwd_future.result()
-            logprobs = np.concatenate(
-                [
-                    step_9_tensor_data_to_numpy(output["logprobs"])
-                    for output in fwdbwd_result.loss_fn_outputs
-                ]
-            )
-            weights = np.concatenate([example.weights for example in batch])
-            weight_sum = float(weights.sum())
-            if weight_sum <= 0:
-                raise ValueError("训练 batch 没有 assistant loss token")
-            train_loss = -float(np.dot(logprobs, weights) / weight_sum)
+            # 逐样本算 loss 再平均：每条样本先按各自权重归一化，再对样本数求均值。
+            # 这样长样本（token 多）不会因为权重和大而主导日志 loss，口径更直观。
+            sample_losses: list[float] = []
+            for output, example in zip(fwdbwd_result.loss_fn_outputs, batch):
+                lp = step_9_tensor_data_to_numpy(output["logprobs"])
+                w = example.weights
+                w_sum = float(w.sum())
+                if w_sum <= 0:
+                    raise ValueError("训练 batch 存在没有 assistant loss token 的样本")
+                sample_losses.append(-float(np.dot(lp, w) / w_sum))
+            train_loss = float(np.mean(sample_losses))
             micro_batch_index += 1
             should_update = (
                 micro_batch_index % config.gradient_accumulation_steps == 0
@@ -397,9 +530,16 @@ def step_9_train(
             if should_update:
                 global_step += 1
                 learning_rate = step_7_learning_rate(config, global_step, total_updates)
-                training_client.optim_step(
+                optim_result = training_client.optim_step(
                     trio.AdamParams(learning_rate=learning_rate,grad_clip_norm=config.grad_clip_norm,weight_decay=config.weight_decay)
                 ).result()
+                grad_norm = step_9_extract_grad_norm(optim_result, fwdbwd_result)
+                if grad_norm is None and not warned_missing_grad_norm:
+                    log.warning(
+                        "PyTRIO optim_step / forward_backward 响应中未找到 grad_norm 指标；"
+                        f"optim_result={optim_result!r}"
+                    )
+                    warned_missing_grad_norm = True
             metrics = {
                 "train/loss": train_loss,
                 "train/epoch": epoch + 1,
@@ -407,6 +547,8 @@ def step_9_train(
             }
             if should_update:
                 metrics["train/learning_rate"] = learning_rate
+                if grad_norm is not None:
+                    metrics["train/grad_norm"] = grad_norm
             swanlab.log(metrics)
             print(
                 f"epoch={epoch + 1}/{config.num_train_epochs} "
@@ -518,6 +660,10 @@ def step_10_main() -> None:
             'grad_clip_norm':config.grad_clip_norm,
             'weight_decay':config.weight_decay,
             'early_stopping_patience':config.early_stopping_patience,
+            "train_mlp" :config.train_mlp,
+            "train_attn" : config.train_attn,
+            "train_unembed" : config.train_unembed,
+            "seed" :config.seed,
         },
     )
     try:

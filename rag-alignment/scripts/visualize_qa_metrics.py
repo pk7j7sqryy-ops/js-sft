@@ -9,7 +9,7 @@ from statistics import mean
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
-OUT = ROOT / "qa_metrics_visualization"
+OUT = ROOT / "sft前优化结果"
 FILES = ["qa_result.csv", "qa_result_20261111_125356.csv", "qa_result_20261111_195326.csv", "qa_result_full_20261111.csv"]
 LABELS = ["A · 原始文件", "B · 11/11 12:53", "C · 11/11 19:53", "D · full 11/11"]
 METRICS = ["faithfulness", "Answer Relevancy", "Context Precision", "Context Recall", "Answer Correctness"]

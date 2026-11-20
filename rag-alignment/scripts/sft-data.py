@@ -1,12 +1,10 @@
 """从实际 RAG 回答调用采集 Prompt，生成 ShareGPT JSONL 和回填 CSV。
 
 默认不覆盖源 CSV；运行前需启动查询图依赖的模型、向量库和会话数据库。
-每行成功后保存检查点和 .partial 输出；中断后以相同参数重跑即可续跑。
 """
 
 import argparse
 import csv
-import hashlib
 import importlib
 import json
 import os
@@ -124,98 +122,43 @@ def write_outputs(source, jsonl_path, csv_path, args, query_app, create_query_de
     headers, rows = read_rows(source, args)
     if args.limit is not None:
         rows = rows[:args.limit]
-    checkpoint_path = jsonl_path.with_name(jsonl_path.name + ".checkpoint.json")
-    partial_jsonl = jsonl_path.with_name(jsonl_path.name + ".partial")
-    partial_csv = csv_path.with_name(csv_path.name + ".partial")
-    config = {
-        "source": str(source.resolve()),
-        "jsonl": str(jsonl_path.resolve()),
-        "csv": str(csv_path.resolve()),
-        "columns": [args.query_column, args.answer_column, args.input_column],
-        "keys": [args.messages_key, args.role_key, args.content_key,
-                 args.user_role, args.assistant_role],
-        "session_prefix": args.session_prefix,
-        "limit": args.limit,
-    }
-    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-    checkpoint = {"config": config, "source_hash": source_hash,
-                  "total": len(rows), "completed": []}
-    if checkpoint_path.exists():
-        with checkpoint_path.open(encoding="utf-8") as handle:
-            checkpoint = json.load(handle)
-        if checkpoint.get("config") != config or checkpoint.get("total") != len(rows):
-            raise ValueError(f"{checkpoint_path}: 续跑参数或数据行数已变化，请先备份并移走检查点")
-        completed = checkpoint.get("completed")
-        if not isinstance(completed, list) or len(completed) > len(rows):
-            raise ValueError(f"{checkpoint_path}: 检查点数据无效")
-        if checkpoint.get("source_hash") != source_hash:
-            if len(completed) != len(rows) or rows != completed:
-                raise ValueError(f"{checkpoint_path}: 输入 CSV 已变化，请先备份并移走检查点")
-        for index, saved_row in enumerate(completed):
-            if not isinstance(saved_row, dict) or set(saved_row) != set(headers):
-                raise ValueError(f"{checkpoint_path}: 第 {index + 2} 行检查点数据无效")
-            if checkpoint["source_hash"] == source_hash and saved_row[args.query_column] != rows[index][args.query_column]:
-                raise ValueError(f"{checkpoint_path}: 第 {index + 2} 行与输入 CSV 不匹配")
-        print(f"{source.name}: 从检查点续跑，已完成 {len(completed)}/{len(rows)}", file=sys.stderr)
-    else:
-        completed = checkpoint["completed"]
-
-    if completed:
-        write_partial_outputs(completed, headers, partial_jsonl, partial_csv, args)
-    for index in range(len(completed), len(rows)):
-        row = rows[index].copy()
-        print(f"{source.name}: {index + 1}/{len(rows)}", file=sys.stderr, flush=True)
+    records = []
+    for index, row in enumerate(rows, start=2):
+        print(f"{source.name}: {index - 1}/{len(rows)}", file=sys.stderr, flush=True)
         try:
             prompt, fallback_answer = invoke_and_capture(
                 row[args.query_column], args.session_prefix,
                 query_app, create_query_default_state, answer_node, item_node)
         except Exception as exc:
-            raise RuntimeError(f"{source}:{index + 2}: RAG 采集失败；已保存 {len(completed)} 条，可重跑续跑: {exc}") from exc
+            raise RuntimeError(f"{source}:{index}: RAG 采集失败: {exc}") from exc
         row[args.input_column] = prompt
         if fallback_answer is not None:
             row[args.answer_column] = fallback_answer
-        completed.append(row)
-        atomic_write(checkpoint_path, lambda handle: json.dump(checkpoint, handle, ensure_ascii=False))
-        write_partial_outputs(completed, headers, partial_jsonl, partial_csv, args)
+        records.append({args.messages_key: [
+            {args.role_key: args.user_role, args.content_key: prompt},
+            {args.role_key: args.assistant_role, args.content_key: row[args.answer_column]},
+        ]})
 
-    os.replace(partial_jsonl, jsonl_path)
-    os.replace(partial_csv, csv_path)
-    checkpoint_path.unlink()
-    return len(rows)
-
-
-def atomic_write(destination, write_content):
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
+    temporary_files = []
     try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
-                                         dir=destination.parent, delete=False) as handle:
-            temporary = Path(handle.name)
-            write_content(handle)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, destination)
+        for destination in (jsonl_path, csv_path):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
+                                             dir=destination.parent, delete=False) as handle:
+                temporary_files.append(Path(handle.name))
+                if destination == jsonl_path:
+                    for record in records:
+                        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                else:
+                    writer = csv.DictWriter(handle, fieldnames=headers)
+                    writer.writeheader()
+                    writer.writerows(rows)
+        for temporary, destination in zip(temporary_files, (jsonl_path, csv_path)):
+            os.replace(temporary, destination)
     finally:
-        if temporary is not None:
+        for temporary in temporary_files:
             temporary.unlink(missing_ok=True)
-
-
-def write_partial_outputs(rows, headers, jsonl_path, csv_path, args):
-    def write_jsonl(handle):
-        for row in rows:
-            record = {args.messages_key: [
-                {args.role_key: args.user_role, args.content_key: row[args.input_column]},
-                {args.role_key: args.assistant_role, args.content_key: row[args.answer_column]},
-            ]}
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-    def write_csv(handle):
-        writer = csv.DictWriter(handle, fieldnames=headers)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    atomic_write(jsonl_path, write_jsonl)
-    atomic_write(csv_path, write_csv)
+    return len(rows)
 
 
 def prioritize_project_imports():

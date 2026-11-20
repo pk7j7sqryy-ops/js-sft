@@ -22,9 +22,9 @@
 构建一份用于生成评测检查裁判 + 检查模型的黄金数据集的程序 01_build_gold.py
 【已知背景】
 1、rag真实检索链路程序入口在 knowledge\processor\query_process\main_graph.py 中的query_app.invoke()方法 3 其中contexts上下文证据从state中的reranked_docs和chunk_backfills提取
-2、过程中用到的llm和embedding 客户端已经在 /Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/utils/lm中
-3、01_build_gold.py在这个目录/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/scripts/01_build_gold.py
-4、知识库文档来源在这里/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/data/raw_docs里的三个文档
+2、过程中用到的llm和embedding 客户端已经在 xiaoan_brain/utils/lm中
+3、01_build_gold.py在这个目录xiaoan_brain/eval/rag-alignment/scripts/01_build_gold.py
+4、知识库文档来源在这里xiaoan_brain/eval/rag-alignment/data/raw_docs里的三个文档
 5、知识库文档为网络安全产品的白皮书和相关手册和指南
 【具体要求】
 # scripts/01_build_gold.py 的完整逻辑
@@ -35,9 +35,9 @@
 #        应拒答题：给一个"看起来相关但其实不含答案"的片段，问一个相近的问题
 # 步骤3：★ contexts 走真实检索链路得到（用 question 去检索，不是用 evidence）
 
-#        计算question+召回contexts的hash，存入/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/data/contexts_cache.jsonl做锁定
+#        计算question+召回contexts的hash，存入xiaoan_brain/eval/rag-alignment/data/contexts_cache.jsonl做锁定
 # 步骤4：
-        构建好的数据集输出为csv文件，命名为'时间+gold.csv'存在/Users/sunqiyu/AiLLM/document/all_project/all_project/09_llmprj/prj_train/xiaoan_brain/eval/rag-alignment/data/goldset
+        构建好的数据集输出为csv文件，命名为'时间+gold.csv'存在iaoan_brain/eval/rag-alignment/data/goldset
         输出列头:
             qid —— 主键
             question--用户问题

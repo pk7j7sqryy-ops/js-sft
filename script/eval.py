@@ -47,7 +47,7 @@ from utils.lm.embedding_utils import generate_embeddings
 
 LOGGER = logging.getLogger("ragas_eval")
 
-DEFAULT_INPUT_CSV = PROJECT_ROOT / "eval" / 'rag-alignment'/'data'/'goldset'/ 'Holdout-1116-1.csv'
+DEFAULT_INPUT_CSV = PROJECT_ROOT / "eval" / 'rag-alignment'/'data'/'goldset'/ 'human_gold-1116.csv'
 EVAL_ENV_PATH = PROJECT_ROOT / "eval" / ".env"
 JUDGE_CONFIG = dotenv_values(EVAL_ENV_PATH, interpolate=False)
 
@@ -58,7 +58,7 @@ def config_path(name: str, default: str) -> Path:
 
 
 DEFAULT_BATCH_SIZE = int(JUDGE_CONFIG.get("EVAL_BATCH_SIZE") or "5")
-DEFAULT_OUTPUT_CSV = config_path("EVAL_OUTPUT_CSV", "eval/data/eval-checkpoint/Holdout-1114-qwen3-4b-train-before.csv")
+DEFAULT_OUTPUT_CSV = config_path("EVAL_OUTPUT_CSV", "eval/data/eval-checkpoint/sft-attn-new-prompt-no-question-loss/human_gold-1116-qwen3-4b-train-after.csv")
 DEFAULT_CHECKPOINT_PATH = config_path(
     "EVAL_CHECKPOINT_PATH", str(DEFAULT_OUTPUT_CSV) + ".checkpoint.json"
 )
@@ -333,6 +333,26 @@ def step_2_format_contexts(contexts: Sequence[str]) -> str:
     )
 
 
+def strip_followup(text: str) -> str:
+    """截掉答案正文之后的追问与图片区块，只保留正文，供 faithfulness 等指标评判。
+
+    追问建议本质是「猜客户下一步」，天然不要求与参考内容逐句对应；若将其
+    一并喂给 faithfulness / Answer Relevancy / Answer Correctness 裁判，
+    追问中超出参考内容的措辞会被误判为幻觉，从而系统性压低这些指标。
+
+    这里只作用于「response」，不改动 reference 与 retrieved_contexts。
+    """
+    if not text:
+        return text
+    marker = "【追问建议】"
+    if marker in text:
+        text = text.split(marker, 1)[0]
+    image_marker = "【图片】"
+    if image_marker in text:
+        text = text.split(image_marker, 1)[0]
+    return text.strip()
+
+
 def step_3_build_ragas_dataset(evaluated_rows: Sequence[dict[str, Any]]) -> Any:
     """把查询结果映射成 Ragas 单轮评估数据集字段。"""
     try:
@@ -347,7 +367,7 @@ def step_3_build_ragas_dataset(evaluated_rows: Sequence[dict[str, Any]]) -> Any:
         {
             "user_input": row["question"],
             "retrieved_contexts": row["contexts"],
-            "response": row["answer"],
+            "response": strip_followup(row["answer"]),
             "reference": row["ground_truth"],
         }
         for row in evaluated_rows
