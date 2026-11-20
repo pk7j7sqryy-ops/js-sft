@@ -6,7 +6,50 @@
 
 ---
 
-## 一、SFT 前的评测基线
+## 一、仓库文件结构
+
+> 本节仅列出已推送到 GitHub 仓库的文件，与仓库实际内容一一对应。
+
+```
+.
+├── README.md                              # 本文档：SFT 消融实验与评测说明
+├── SFT消融实验指标对比报告.html           # 指标对比报告（HTML 版，含跨实验折线图与相邻实验后值差标注）
+├── images/
+│   ├── sft-training-chart-compare.png     # 多组实验训练曲线对比图
+│   └── sft-training-calm-monkey-9.png     # 最终方案训练指标面板截图
+├── script/
+│   ├── eval.py                            # 使用 Ragas 评估 RAG 查询流程（分批查询、逐题评分、支持续跑）
+│   └── test_eval.py                       # eval.py 的单元测试
+├── test/
+│   ├── apply_chat.py                      # 仅下载 tokenizer 配置（不下载 4B 权重），用于对话测试
+│   ├── pytrio-test.py                     # PyTRIO OpenAI 兼容接口调用测试
+│   └── swanlab-test.py                    # SwanLab 训练监控上报测试
+├── rag-alignment/
+│   ├── gen_reject_samples.py              # 生成「参考内容不足」拒绝样本，追加进 train/val
+│   ├── PyTRIO/
+│   │   ├── sft.py                         # 使用 PyTRIO 对 JSONL 对话数据执行 LoRA SFT
+│   │   ├── sft-tem.py                     # SFT 训练脚本（模板/示例版）
+│   │   ├── test_sft_config.py             # sft 配置项单元测试
+│   │   └── test_sft_grad_norm.py          # 梯度裁剪（grad norm）单元测试
+│   ├── prompts/
+│   │   ├── SFT 相关脚本生成提示词.txt       # 用于生成 SFT 相关脚本的提示词
+│   │   ├── 数据示例.txt                     # 数据示例说明
+│   │   └── 黄金集数据构建脚本提示词.txt      # 黄金集数据构建脚本提示词
+│   └── scripts/
+│       ├── sft-data.py                    # 从实际 RAG 回答采集 Prompt，生成 ShareGPT JSONL 并回填 CSV
+│       ├── visualize_qa_metrics.py        # 只读 CSV 评测分析，生成自包含 HTML 与 SVG 图表
+│       ├── test_answer_all_docs.py        # 回答全文档测试
+│       ├── test_build_gold.py             # 黄金集构建测试
+│       └── test_sft_data.py               # SFT 数据生成测试
+└── sft前优化结果/
+    ├── 01_mean_trends.svg                 # 各指标均值趋势图
+    ├── 02_mean_comparison.svg             # 各指标均值对比图
+    └── 03_paired_changes.svg              # 相邻实验配对变化图
+```
+
+---
+
+## 二、SFT 前的评测基线
 
 在引入 SFT 之前，先对检索与提示词做了两轮迭代，得到 SFT 的起点基线。
 
@@ -45,7 +88,7 @@
 
 ---
 
-## 二、SFT 训练与消融实验迭代
+## 三、SFT 训练与消融实验迭代
 
 从第二次评估的基线出发，共进行了四轮训练方案调整与六组消融对比。各组实验的定义如下：
 
@@ -59,6 +102,73 @@
 | 06 | 仅 attn，+20% 拒绝回答负样本，追问建议不算 loss | 修改推理提示词 + 追问建议后不做评估 | hold40+human20 |
 
 > 口径提示：02 / 04 / 06 为完整标准评测集，可横向对比；01 使用旧评测集、03 缺 hold 后评估、05 仅 hold，三者仅作过程参考，不参与最终结论的横向比较。
+
+### 结果展示
+
+下表汇总六组实验的 RAGAS 五项指标（SFT 后均值，百分比）。**加粗**为该指标最优值，<u>下划线</u>为次优值。
+
+<table>
+<thead>
+<tr>
+<th align="left">指标 (RAGAS)</th>
+<th align="center">01<br>attn+mlp+lm<br>未清洗</th>
+<th align="center">02<br>attn+mlp+lm<br>清洗后</th>
+<th align="center">03<br>仅 attn</th>
+<th align="center">04<br>仅 attn<br>改提示词</th>
+<th align="center">05<br>仅 attn<br>不评追问</th>
+<th align="center">06<br>最终方案<br>label masking</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">Faithfulness</td>
+<td align="center"><b>91.46</b></td>
+<td align="center">68.83</td>
+<td align="center">74.79</td>
+<td align="center">67.68</td>
+<td align="center"><u>90.91</u></td>
+<td align="center">89.53</td>
+</tr>
+<tr>
+<td align="left">Answer Relevancy</td>
+<td align="center">79.04</td>
+<td align="center">90.02</td>
+<td align="center">87.05</td>
+<td align="center"><u>91.22</u></td>
+<td align="center">90.21</td>
+<td align="center"><b>92.02</b></td>
+</tr>
+<tr>
+<td align="left">Context Precision</td>
+<td align="center"><b>91.30</b></td>
+<td align="center">84.70</td>
+<td align="center"><u>86.45</u></td>
+<td align="center">83.16</td>
+<td align="center">81.40</td>
+<td align="center">83.52</td>
+</tr>
+<tr>
+<td align="left">Context Recall</td>
+<td align="center">75.02</td>
+<td align="center">84.32</td>
+<td align="center"><b>94.70</b></td>
+<td align="center"><u>85.74</u></td>
+<td align="center">72.99</td>
+<td align="center">85.45</td>
+</tr>
+<tr>
+<td align="left">Answer Correctness</td>
+<td align="center">51.38</td>
+<td align="center">66.22</td>
+<td align="center">60.18</td>
+<td align="center">65.58</td>
+<td align="center"><b>75.99</b></td>
+<td align="center"><u>71.56</u></td>
+</tr>
+</tbody>
+</table>
+
+> 口径说明：01 使用旧评测集（hold20+human10）、03 缺 hold 后评估（仅 human20）、05 仅 hold40，三者与 02 / 04 / 06 的评测集口径不同，上表的「最优 / 次优」仅作数据标注，不作为跨实验的严格横向比较结论。最终方案 06 在完整口径（hold40+human20）下取得忠实度与正确性的确定性提升，详见下文实验 06。
 
 ### 训练过程监控
 
@@ -120,7 +230,7 @@
 
 ---
 
-## 三、总体结论
+## 四、总体结论
 
 从最初的 `71.4% / 87.7% / 82.7% / 78.3% / 49.6%`，
 到 SFT 前基线 `81.0% / 90.8% / 85.6% / 84.0% / 62.2%`，
@@ -135,7 +245,7 @@
 
 > 需要说明：实验 05（仅 hold 口径）虽然忠实度提升最大（+34.32%），但伴随召回率明显下降（−14.87%），且口径不完整，故不作为最终方案。最终方案 06 在忠实度与正确性上取得确定性提升的同时，未牺牲相关性与召回率，是综合最优配置。
 
-## 四、SFT 训练参数参考
+## 五、SFT 训练参数参考
 
 ### 数据情况
 
@@ -196,47 +306,4 @@ SEED=42
 
 # 早停耐心值
 EARLY_STOPPING_PATIENCE=3
-```
-
----
-
-## 五、仓库文件结构
-
-> 本节仅列出已推送到 GitHub 仓库的文件，与仓库实际内容一一对应。
-
-```
-.
-├── README.md                              # 本文档：SFT 消融实验与评测说明
-├── SFT消融实验指标对比报告.html           # 指标对比报告（HTML 版，含跨实验折线图与相邻实验后值差标注）
-├── images/
-│   ├── sft-training-chart-compare.png     # 多组实验训练曲线对比图
-│   └── sft-training-calm-monkey-9.png     # 最终方案训练指标面板截图
-├── script/
-│   ├── eval.py                            # 使用 Ragas 评估 RAG 查询流程（分批查询、逐题评分、支持续跑）
-│   └── test_eval.py                       # eval.py 的单元测试
-├── test/
-│   ├── apply_chat.py                      # 仅下载 tokenizer 配置（不下载 4B 权重），用于对话测试
-│   ├── pytrio-test.py                     # PyTRIO OpenAI 兼容接口调用测试
-│   └── swanlab-test.py                    # SwanLab 训练监控上报测试
-├── rag-alignment/
-│   ├── gen_reject_samples.py              # 生成「参考内容不足」拒绝样本，追加进 train/val
-│   ├── PyTRIO/
-│   │   ├── sft.py                         # 使用 PyTRIO 对 JSONL 对话数据执行 LoRA SFT
-│   │   ├── sft-tem.py                     # SFT 训练脚本（模板/示例版）
-│   │   ├── test_sft_config.py             # sft 配置项单元测试
-│   │   └── test_sft_grad_norm.py          # 梯度裁剪（grad norm）单元测试
-│   ├── prompts/
-│   │   ├── SFT 相关脚本生成提示词.txt       # 用于生成 SFT 相关脚本的提示词
-│   │   ├── 数据示例.txt                     # 数据示例说明
-│   │   └── 黄金集数据构建脚本提示词.txt      # 黄金集数据构建脚本提示词
-│   └── scripts/
-│       ├── sft-data.py                    # 从实际 RAG 回答采集 Prompt，生成 ShareGPT JSONL 并回填 CSV
-│       ├── visualize_qa_metrics.py        # 只读 CSV 评测分析，生成自包含 HTML 与 SVG 图表
-│       ├── test_answer_all_docs.py        # 回答全文档测试
-│       ├── test_build_gold.py             # 黄金集构建测试
-│       └── test_sft_data.py               # SFT 数据生成测试
-└── sft前优化结果/
-    ├── 01_mean_trends.svg                 # 各指标均值趋势图
-    ├── 02_mean_comparison.svg             # 各指标均值对比图
-    └── 03_paired_changes.svg              # 相邻实验配对变化图
 ```
