@@ -1,6 +1,6 @@
 # SFT 消融实验与评测说明
 
-本文档记录小安智库 RAG 知识库在生成侧引入监督微调（SFT）前的评测基线、SFT 数据与训练方案的迭代过程，以及历次消融实验的指标变化与结论。
+本文档记录智库 RAG 知识库在生成侧引入监督微调（SFT）前的评测基线、SFT 数据与训练方案的迭代过程，以及历次消融实验的指标变化与结论。
 
 > 指标说明：本文沿用 RAGAS 评测框架的五项指标——Faithfulness（忠实度）、Answer Relevancy（答案相关性）、Context Precision（上下文精确率）、Context Recall（上下文召回率）、Answer Correctness（答案正确性）。所有百分比均为相对变化，以「SFT 前基线均值」为分母计算；除特别注明外，评测集为标准 hold40 + human20。
 
